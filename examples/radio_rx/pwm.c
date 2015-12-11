@@ -7,6 +7,7 @@ uint16_t* m_buf;
 
 
 void pwm_init(void) {
+
     NRF_GPIO->DIRSET = (1 << PWM_PIN_0) | (1 << PWM_PIN_1) | (1 << PWM_PIN_2);
     NRF_GPIO->OUTCLR = (1 << PWM_PIN_0) | (1 << PWM_PIN_1) | (1 << PWM_PIN_2);
 
@@ -24,7 +25,9 @@ void pwm_init(void) {
 
     NRF_PWM0->SEQ[0].CNT = 4; //((sizeof(buf) / sizeof(uint16_t)) << PWM_SEQ_CNT_CNT_Pos);
     NRF_PWM0->SEQ[0].ENDDELAY = 0;
-    NRF_PWM0->SEQ[0].PTR = (uint32_t)&m_buf[0];
+    NRF_PWM0->SEQ[0].PTR = (uint32_t)&m_buf32[0];
+    m_buf = (uint16_t *)(uint32_t)&m_buf32[0];
+
     NRF_PWM0->SEQ[0].REFRESH = 0;
     NRF_PWM0->SHORTS = PWM_SHORTS_LOOPSDONE_SEQSTART0_Msk;
 

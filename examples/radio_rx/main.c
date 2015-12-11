@@ -1,4 +1,5 @@
 #include <nrf.h>
+#include <stdbool.h>
 #include "led.h"
 #include "buttons.h"
 #include "pwm.h"
@@ -7,7 +8,17 @@
 
 volatile rc_packet_t c_packet;
 
+static int32_t throttle = 0;    // used
+static int32_t yaw      = 500;  // unused
+static int32_t pitch    = 500;  // used
+static int32_t roll     = 500;  // unused
 
+
+#define SERVO_MAX ((1UL << 15) | 1900)
+#define SERVO_MIN ((1UL << 15) | 1100)
+#define SERVO_MID ((1UL << 15) | 1500)
+
+extern uint16_t* m_buf;
 void medium_delay(void) {
     uint32_t volatile tmo;
 
@@ -16,20 +27,39 @@ void medium_delay(void) {
 
 }
 
+
+
+
+volatile bool packet_received;
+bool error_in_packet;
+
+
+void pwm_update_servos(void) {
+    m_buf[0] = (uint16_t) ((1<<15) | (1000 + throttle));
+    m_buf[1] = (uint16_t) ((1<<15) | (1000 + pitch));
+    m_buf[2] = (uint16_t) ((1<<15) | (1000 + yaw));
+    m_buf[3] = (uint16_t) ((1<<15) | (1000 + roll));
+}
 void RADIO_IRQHandler(void) {
-    led_on();
+
 
     if (NRF_RADIO->EVENTS_CRCOK) {
-        led_on();
+
         NRF_RADIO->EVENTS_CRCOK = 0;
-        medium_delay();
-        led_off();
+
+    }
+
+    if (NRF_RADIO->EVENTS_END) {
+
+        NRF_RADIO->EVENTS_END = 0;
+
     }
     if (NRF_RADIO->EVENTS_ADDRESS) {
         NRF_RADIO->EVENTS_ADDRESS = 0;
     }
+    packet_received = true;
     //medium_delay();
-    //led_off();
+    //
 }
 
 
@@ -89,35 +119,97 @@ int main(void)
   // Configure address of the packet and logic address to use
   NRF_RADIO->PACKETPTR = (uint32_t)&c_packet;
 
-  // Configure shortcuts to start as soon as READY event is received, and disable radio as soon as packet is received.
-  NRF_RADIO->SHORTS = (RADIO_SHORTS_READY_START_Enabled << RADIO_SHORTS_READY_START_Pos) |
-                      (RADIO_SHORTS_END_DISABLE_Enabled << RADIO_SHORTS_END_DISABLE_Pos);
 
+  for(int i=0;i<4;i++)
+      m_buf[i] = SERVO_MID;
 
-  buttons_config();
   pwm_init();
   // Continually receive packet
 
-  NRF_RADIO->INTENSET = (RADIO_INTENSET_CRCOK_Enabled << RADIO_INTENSET_CRCOK_Pos); // |
+
+#if 1
+  NRF_RADIO->SHORTS = (RADIO_SHORTS_READY_START_Enabled << RADIO_SHORTS_READY_START_Pos) |
+      (RADIO_SHORTS_END_DISABLE_Enabled << RADIO_SHORTS_END_DISABLE_Pos);
+
+  NRF_RADIO->INTENSET = (RADIO_INTENSET_END_Enabled << RADIO_INTENSET_END_Pos); // |
   // (RADIO_INTENSET_ADDRESS_Enabled << RADIO_INTENSET_ADDRESS_Pos);
 
   NVIC_SetPriority(RADIO_IRQn, 3);
-  // NVIC_EnableIRQ(RADIO_IRQn);
+  NVIC_EnableIRQ(RADIO_IRQn);
+
+
+  NRF_RADIO->TASKS_RXEN = 1;
+  packet_received = false;
+
+
+  while(1) {
+      error_in_packet = false;
+      __WFI();
+      if(packet_received) {
+          packet_received = false;
+          if((c_packet. magic1 == MAGIC1) && (c_packet. magic2 == MAGIC2)) {
+              led_on();
+              if(c_packet.throttle > 1000) {
+                  throttle = 0;
+                  error_in_packet = true;
+              } else {
+                  throttle = c_packet.throttle;
+              }
+
+              if(c_packet.yaw > 1000) {
+                  yaw = 500;
+                  error_in_packet = true;
+              } else {
+                  yaw = c_packet.yaw;
+              }
+              if(c_packet.pitch > 1000) {
+                  pitch = 500;
+                  error_in_packet = true;
+              } else {
+                  pitch = c_packet.pitch;
+              }
+              if(c_packet.roll > 1000) {
+                  roll = 500;
+                  error_in_packet = true;
+              } else {
+                  roll = c_packet.roll;
+              }
+
+              if(! error_in_packet) {
+                  pwm_update_servos();
+
+                  NRF_PWM0->TASKS_SEQSTART[0] = 1;
+                  while (NRF_PWM0->EVENTS_SEQEND[0] == 0);
+                  NRF_PWM0->EVENTS_SEQEND[0] = 0;
+
+              }
+              medium_delay();
+              led_off();
+          }
+          NRF_RADIO->TASKS_RXEN = 1;
+
+
+          //
+      }
+  }
+#else
+
+  // Configure shortcuts to start as soon as READY event is received, and disable radio as soon as packet is received.
+  NRF_RADIO->SHORTS = (RADIO_SHORTS_READY_START_Enabled << RADIO_SHORTS_READY_START_Pos) |
+      (RADIO_SHORTS_END_DISABLE_Enabled << RADIO_SHORTS_END_DISABLE_Pos);
 
 
   while (1)
   {
 
-    NRF_RADIO->TASKS_RXEN = 1;
+      NRF_RADIO->TASKS_RXEN = 1;
     while (NRF_RADIO->EVENTS_DISABLED == 0);
     NRF_RADIO->EVENTS_DISABLED = 0;
 
 
 
 
-    //while(1) {
-    //    __WFE();
-    //}
+
 
     if (NRF_RADIO->EVENTS_CRCOK)
     {
@@ -132,4 +224,5 @@ int main(void)
         c_packet.magic2 = 0;
     }
   }
+  #endif
 }
