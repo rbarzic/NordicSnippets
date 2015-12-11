@@ -4,7 +4,7 @@ DEVICE_VARIANT =xxaa
 # We have to use SDK, not MDK because core_cm4.h is not provided in MDK
 xDK_TOP ?=../../../../nRF52_SDK_0.9.2_dbc28c9
 
-SOURCES = ../main.c
+SOURCES += ../main.c
 
 GNU_PREFIX ?= arm-none-eabi
 
@@ -20,12 +20,12 @@ PROG_NAME ?= example
 # CPU related flags
 ifeq ($(DEVICE),NRF51)
 CFLAGS += -mthumb -mcpu=cortex-m0 -march=armv6-m
-LINKER_SCRIPT = $(xDK_TOP)/components/toolchain/gcc/nrf51_$(DEVICE_VARIANT).ld
+LINKER_SCRIPT ?= $(xDK_TOP)/components/toolchain/gcc/nrf51_$(DEVICE_VARIANT).ld
 endif
 
 ifeq ($(DEVICE),NRF52)
 CFLAGS +=  -mcpu=cortex-m4 -mthumb -mabi=aapcs -mfpu=fpv4-sp-d16 -mfloat-abi=hard
-LINKER_SCRIPT = $(xDK_TOP)/components/toolchain/gcc/nrf52_$(DEVICE_VARIANT).ld
+LINKER_SCRIPT ?= $(xDK_TOP)/components/toolchain/gcc/nrf52_$(DEVICE_VARIANT).ld
 endif
 
 ifeq ($(DEBUG),yes)
